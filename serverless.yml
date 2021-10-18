@@ -1,0 +1,77 @@
+org: dynoco
+app: live-chat-websockets-dynamodb
+service: live-chat-websockets-dynamodb
+
+frameworkVersion: '2'
+
+custom:
+  tableName: 'users-table-${self:provider.stage}'
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  lambdaHashingVersion: '20201221'
+  stage: dev
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - Fn::GetAtt: [ UsersTable, Arn ]
+  environment:
+    USERS_TABLE: ${self:custom.tableName}
+
+functions:
+  api:
+    handler: handler.handler
+    events:
+      - http:
+          path: /
+          method: ANY
+      - http:
+          path: /{proxy+}
+          method: ANY
+  chat-connect-dynamodb:
+    handler: ./src/connect.socket
+    name: chat-web-socket-connect-dynamodb
+    description: Web socket to connect to the chat server
+    events:
+      - websocket:
+          route: $connect
+  chat-message-dynamodb:
+    handler: ./src/message.socket
+    name: chat-web-socket-message-dynamodb
+    description: Web socket to message to the chat server
+    events:
+      - websocket:
+          route: message
+  chat-send-dynamodb:
+    handler: ./src/send.socket
+    name: chat-web-socket-send-dynamodb
+    description: Web socket to message to the chat server
+    events:
+      - websocket:
+          route: send
+
+resources:
+  Resources:
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:custom.tableName}
